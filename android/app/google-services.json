@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "44848223246",
+    "firebase_url": "https://nisanapp-f727a-default-rtdb.firebaseio.com",
+    "project_id": "nisanapp-f727a",
+    "storage_bucket": "nisanapp-f727a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:44848223246:android:6466d9c27db35e82a3185f",
+        "android_client_info": {
+          "package_name": "com.example.hellome"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAc7Vh_Xfpja5VxkS2h3ZPb-R9t3t1gjL4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
