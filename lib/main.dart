@@ -48,7 +48,8 @@ import 'package:path/path.dart' as p_path;
 
 // Add these imports with your other Firebase and Flutter imports
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter/foundation.dart' show PlatformDispatcher;
+import 'package:flutter/foundation.dart' show PlatformDispatcher, kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 
 // --- /lib/src/utils/logger.dart ---
@@ -160,6 +161,11 @@ class NotificationService {
   }
 
   Future<void> requestPermissions() async {
+    // Add this check to skip the whole function on web
+    if (kIsWeb) {
+      _logger.log("Notification permissions not applicable for web.");
+      return;
+    }
     if (Platform.isIOS) {
       await _notificationsPlugin
           .resolvePlatformSpecificImplementation<
@@ -1298,36 +1304,35 @@ class TaskManager extends ChangeNotifier {
 
 // REPLACE the existing permanentlyDeleteTask function with this one:
 
+  // In your TaskManager class
+
   Future<void> permanentlyDeleteTask(String taskId) async {
     try {
-      // Fetch the task document directly from Firestore to ensure we have the correct data
       final docRef = FirebaseFirestore.instance.collection(Constants.tasksCollection).doc(taskId);
       final doc = await docRef.get();
 
       if (!doc.exists) {
-        _logger.log("Task with ID $taskId not found in Firestore for permanent deletion.");
+        _logger.log("Task with ID $taskId not found for permanent deletion.");
         return;
       }
 
-      // Create a Task object from the fetched document data
       final taskToDelete = Task.fromFirestore(doc as DocumentSnapshot<Map<String, dynamic>>);
 
-      // Proceed with deleting associated local files (attachments)
-      for (var attachment in taskToDelete.attachments) {
-        try {
-          final file = File(attachment.localPath);
-          if (await file.exists()) {
-            await file.delete();
+      // Only try to delete local files if NOT on web
+      if (!kIsWeb) {
+        for (var attachment in taskToDelete.attachments) {
+          try {
+            final file = File(attachment.localPath);
+            if (await file.exists()) {
+              await file.delete();
+            }
+          } catch(e) {
+            _logger.log("Error deleting local attachment ${attachment.localPath}: $e");
           }
-        } catch(e) {
-          _logger.log("Error deleting local attachment ${attachment.localPath}: $e");
         }
       }
 
-      // Cancel any scheduled notifications for the task
       await _cancelNotificationsForTask(taskToDelete);
-
-      // Finally, delete the task from Firestore
       await _firestoreService.deleteTask(taskId);
 
     } catch (e) {
@@ -1599,14 +1604,21 @@ class NoteManager extends ChangeNotifier {
     catch (e) { _logger.log("NoteManager: Error updating note ${updatedNote.id}: $e"); rethrow; }
   }
 
+  // In your NoteManager class
+
   Future<void> deleteNote(String noteId) async {
     final noteToDelete = _notes.firstWhere((n) => n.id == noteId, orElse: () => throw Exception("Note not found"));
-    for (var attachment in noteToDelete.attachments) {
-      try {
-        final file = File(attachment.localPath);
-        if (await file.exists()) { await file.delete(); }
-      } catch(e) { _logger.log("Error deleting local attachment ${attachment.localPath}: $e"); }
+
+    // Only try to delete local files if NOT on web
+    if (!kIsWeb) {
+      for (var attachment in noteToDelete.attachments) {
+        try {
+          final file = File(attachment.localPath);
+          if (await file.exists()) { await file.delete(); }
+        } catch(e) { _logger.log("Error deleting local attachment ${attachment.localPath}: $e"); }
+      }
     }
+
     await _firestoreService.deleteNote(noteId);
   }
 }
@@ -3802,7 +3814,22 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     ));
   }
 
+  // In your TaskDetailScreen widget
+
   Future<void> _attachFile() async {
+    // FINAL FIX: Add this check at the very top of the function.
+    if (kIsWeb) {
+      _logger.log("Local file attachments are not supported on web.");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('File attachments are not available on the web version.'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ));
+      }
+      return; // Stop the function immediately for web
+    }
+
+    // The rest of the original code will now only run on mobile.
     FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.any);
     if (result != null && result.files.single.path != null) {
       try {
@@ -3830,7 +3857,22 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     }
   }
 
+  // In your TaskDetailScreen widget
+
   Future<void> _viewAttachment(Attachment attachment) async {
+    // Add this conditional check
+    if (kIsWeb) {
+      _logger.log("Local file viewing is not supported on web.");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Local file preview is not supported on web.'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ));
+      }
+      return;
+    }
+
+    // The rest of your original code for mobile goes here
     final file = File(attachment.localPath);
 
     if (!await file.exists()) {
@@ -4257,7 +4299,6 @@ class StatsScreen extends StatelessWidget {
 }
 
 // --- /lib/src/features/about/presentation/about_screen.dart ---
-// --- /lib/src/features/about/presentation/about_screen.dart ---
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
   Future<void> _launchUrl(BuildContext context, String urlString) async {
@@ -4276,7 +4317,7 @@ class AboutScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context); final textTheme = theme.textTheme;
     return Scaffold(appBar: AppBar(title: const Text('About NisanApp')), body: ListView(padding: const EdgeInsets.all(16.0), children: <Widget>[
-      Center(child: Column(children: [Icon(Icons.library_books_rounded, size: 60, color: theme.colorScheme.primary), const SizedBox(height: 12), Text('NisanApp', style: textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)), const SizedBox(height: 4), Text('Your Smart Manager & Notebook.', style: textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant), textAlign: TextAlign.center)])),
+      Center(child: Column(children: [Icon(Icons.task_alt_rounded, size: 60, color: theme.colorScheme.primary), const SizedBox(height: 12), Text('NisanApp', style: textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)), const SizedBox(height: 4), Text('Your Smart Manager & Notebook.', style: textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant), textAlign: TextAlign.center)])),
       const SizedBox(height: 24), Text('NisanApp is a smart, intuitive application built to elevate your productivity. It integrates task management, spaced repetition, and a powerful notebook into a clean, fluid, and memory-friendly design.', style: textTheme.bodyLarge, textAlign: TextAlign.center),
       const SizedBox(height: 24), const Divider(), const SizedBox(height: 16),
       Text('Why NisanApp Stands Out', style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)), const SizedBox(height: 16),
@@ -6605,6 +6646,7 @@ class PdfViewerScreen extends StatelessWidget {
 }
 
 // --- NEW: DEDICATED IMAGE VIEWER SCREEN ---
+// --- NEW: DEDICATED IMAGE VIEWER SCREEN (CORRECTED FOR WEB) ---
 class ImageViewerScreen extends StatelessWidget {
   final String imagePath;
   const ImageViewerScreen({super.key, required this.imagePath});
@@ -6619,7 +6661,17 @@ class ImageViewerScreen extends StatelessWidget {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Center(
-        child: ExtendedImage.file(
+        // Use a conditional check for the web platform
+        child: kIsWeb
+        // **WEB:** Display a message. A local mobile file path is not accessible on the web.
+            ? const Center(
+          child: Text(
+            "Local file preview is not supported on web.",
+            style: TextStyle(color: Colors.white),
+          ),
+        )
+        // **MOBILE:** Use the original code that works on mobile devices.
+            : ExtendedImage.file(
           File(imagePath),
           fit: BoxFit.contain,
           mode: ExtendedImageMode.gesture,
